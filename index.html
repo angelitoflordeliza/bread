@@ -43,7 +43,9 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 let grid = [];
-let obstacles = [];
+let gameOver = false;
+
+const reflectionText = `Designing this AI-driven game prototype allowed me to bridge theoretical concepts like finite state machines, behavior trees, and pathfinding with practical implementation in an interactive environment. By focusing on how agents respond and adapt to player actions, I gained a deeper appreciation for how AI directly shapes player experience—turning simple mechanics into dynamic and emergent gameplay moments. Experimenting with decision-making systems and adaptive behaviors highlighted the balance between predictability and unpredictability, showing how controlled randomness and state-based logic can make the world feel alive. Through testing and iteration, I learned that effective AI design is not just about technical correctness, but about crafting meaningful interactions that create tension, challenge, and engagement.`;
 
 // Create grid
 for (let y = 0; y < rows; y++) {
@@ -76,6 +78,8 @@ clearTile(18,18);
 
 // ====== INPUT ======
 document.addEventListener("keydown", e => {
+    if (gameOver) return;
+
     let nx = player.x;
     let ny = player.y;
 
@@ -220,14 +224,29 @@ function draw(){
     ctx.fillRect(ai.x*tileSize,ai.y*tileSize,tileSize,tileSize);
 }
 
+// ====== SHOW REFLECTION ======
+function showReflection(){
+    document.body.innerHTML = `
+        <h2>Game Over</h2>
+        <p style="max-width:600px; margin: 20px auto; line-height:1.6;">
+            ${reflectionText}
+        </p>
+        <button onclick="location.reload()">Play Again</button>
+    `;
+}
+
 // ====== GAME LOOP ======
 function gameLoop(){
+
+    if (gameOver) return;
+
     updateAI();
     draw();
 
     if (player.x===ai.x && player.y===ai.y){
-        alert("Caught!");
-        location.reload();
+        gameOver = true;
+        showReflection();
+        return;
     }
 
     setTimeout(gameLoop, 200);
