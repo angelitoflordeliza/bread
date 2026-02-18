@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html>
+<head>
+<meta charset="UTF-8">
+<title>AI Prototype - Adaptive Hunter</title>
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial;
+    text-align: center;
+}
+
+canvas {
+    background: #222;
+    margin-top: 10px;
+    border: 2px solid white;
+}
+
+#info {
+    margin-top: 10px;
+}
+</style>
+</head>
+<body>
+
+<h2>AI Prototype: Adaptive Hunter</h2>
+<p>Move with Arrow Keys. Avoid the AI.</p>
+<div id="info">AI State: Patrol</div>
+<canvas id="game" width="600" height="600"></canvas>
+
+<script>
+// ====== CONFIG ======
+const tileSize = 30;
+const cols = 20;
+const rows = 20;
+const visionRange = 5;
+
+// ====== SETUP ======
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let grid = [];
+let obstacles = [];
+
+// Create grid
+for (let y = 0; y < rows; y++) {
+    grid[y] = [];
+    for (let x = 0; x < cols; x++) {
+        grid[y][x] = 0;
+        if (Math.random() < 0.15) {
+            grid[y][x] = 1; // obstacle
+        }
+    }
+}
+
+function clearTile(x,y){
+    grid[y][x] = 0;
+}
+
+// ====== PLAYER ======
+let player = { x: 1, y: 1 };
+clearTile(1,1);
+
+// ====== AI ======
+let ai = {
+    x: 18,
+    y: 18,
+    state: "patrol",
+    path: [],
+    lastSeen: null
+};
+clearTile(18,18);
+
+// ====== INPUT ======
+document.addEventListener("keydown", e => {
+    let nx = player.x;
+    let ny = player.y;
+
+    if (e.key === "ArrowUp") ny--;
+    if (e.key === "ArrowDown") ny++;
+    if (e.key === "ArrowLeft") nx--;
+    if (e.key === "ArrowRight") nx++;
+
+    if (isWalkable(nx, ny)) {
+        player.x = nx;
+        player.y = ny;
+    }
+});
+
+// ====== UTIL ======
+function isWalkable(x,y){
+    return x>=0 && y>=0 && x<cols && y<rows && grid[y][x]===0;
+}
+
+function heuristic(a,b){
+    return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+}
+
+// ====== A* PATHFINDING ======
+function findPath(start, goal){
+    let open = [start];
+    let cameFrom = {};
+    let gScore = {};
+    let fScore = {};
+
+    function key(n){ return n.x+","+n.y; }
+
+    gScore[key(start)] = 0;
+    fScore[key(start)] = heuristic(start, goal);
+
+    while (open.length > 0){
+        open.sort((a,b)=>fScore[key(a)]-fScore[key(b)]);
+        let current = open.shift();
+
+        if (current.x===goal.x && current.y===goal.y){
+            let path = [];
+            while (key(current) in cameFrom){
+                path.push(current);
+                current = cameFrom[key(current)];
+            }
+            return path.reverse();
+        }
+
+        let neighbors = [
+            {x:current.x+1,y:current.y},
+            {x:current.x-1,y:current.y},
+            {x:current.x,y:current.y+1},
+            {x:current.x,y:current.y-1}
+        ];
+
+        for (let neighbor of neighbors){
+            if (!isWalkable(neighbor.x,neighbor.y)) continue;
+
+            let tentative = gScore[key(current)] + 1;
+            if (!(key(neighbor) in gScore) || tentative < gScore[key(neighbor)]){
+                cameFrom[key(neighbor)] = current;
+                gScore[key(neighbor)] = tentative;
+                fScore[key(neighbor)] = tentative + heuristic(neighbor,goal);
+                if (!open.find(n=>n.x===neighbor.x&&n.y===neighbor.y))
+                    open.push(neighbor);
+            }
+        }
+    }
+    return [];
+}
+
+// ====== AI FSM ======
+function updateAI(){
+    let dist = heuristic(ai, player);
+
+    switch(ai.state){
+
+        case "patrol":
+            if (dist <= visionRange){
+                ai.state = "chase";
+                ai.lastSeen = {x:player.x,y:player.y};
+            } else {
+                if (ai.path.length===0){
+                    let rx = Math.floor(Math.random()*cols);
+                    let ry = Math.floor(Math.random()*rows);
+                    if (isWalkable(rx,ry))
+                        ai.path = findPath({x:ai.x,y:ai.y},{x:rx,y:ry});
+                }
+            }
+        break;
+
+        case "chase":
+            if (dist <= visionRange){
+                ai.lastSeen = {x:player.x,y:player.y};
+                ai.path = findPath({x:ai.x,y:ai.y}, ai.lastSeen);
+            } else {
+                ai.state = "search";
+            }
+        break;
+
+        case "search":
+            if (ai.lastSeen){
+                ai.path = findPath({x:ai.x,y:ai.y}, ai.lastSeen);
+                if (ai.x===ai.lastSeen.x && ai.y===ai.lastSeen.y){
+                    ai.lastSeen = null;
+                    ai.state = "patrol";
+                }
+            } else {
+                ai.state = "patrol";
+            }
+        break;
+    }
+
+    if (ai.path.length>0){
+        let next = ai.path.shift();
+        ai.x = next.x;
+        ai.y = next.y;
+    }
+
+    document.getElementById("info").innerText = "AI State: " + ai.state;
+}
+
+// ====== DRAW ======
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    for (let y=0;y<rows;y++){
+        for (let x=0;x<cols;x++){
+            if (grid[y][x]===1){
+                ctx.fillStyle="#555";
+                ctx.fillRect(x*tileSize,y*tileSize,tileSize,tileSize);
+            }
+        }
+    }
+
+    // Player
+    ctx.fillStyle="lime";
+    ctx.fillRect(player.x*tileSize,player.y*tileSize,tileSize,tileSize);
+
+    // AI
+    ctx.fillStyle="red";
+    ctx.fillRect(ai.x*tileSize,ai.y*tileSize,tileSize,tileSize);
+}
+
+// ====== GAME LOOP ======
+function gameLoop(){
+    updateAI();
+    draw();
+
+    if (player.x===ai.x && player.y===ai.y){
+        alert("Caught!");
+        location.reload();
+    }
+
+    setTimeout(gameLoop, 200);
+}
+
+gameLoop();
+
+</script>
+</body>
+</html>
